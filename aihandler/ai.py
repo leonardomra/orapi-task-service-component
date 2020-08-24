@@ -88,21 +88,29 @@ class AIntel:
         job.task_params = json.loads(job.task_params)
         job.user = resultsJob[0][11]
         # populate source, sample and model
+        if job.status == 'completed' or job.status == 'cancelled':
+            print('Task already executed.', flush=True)
+            self.taskIsActive = False
+            return False
+
         dataQuery = ("SELECT id, fileName, format, kind, label, location FROM Data WHERE id = %s")
         if job.task == 'train':
             dataSource = self.populateDataComplex(job, job.data_source, dataQuery, 'Data source is invalid.')
             if not dataSource:
+                self.taskIsActive = False
                 return False
             else:
                 job.data_source = dataSource
         else:
             dataSample = self.populateDataComplex(job, job.data_sample, dataQuery, 'Data sample is invalid.')
             if not dataSample:
+                self.taskIsActive = False
                 return False
             else:
                 job.data_sample = dataSample
             model = self.populateDataComplex(job, job.model, dataQuery, 'Model is invalid.')
             if not model:
+                self.taskIsActive = False
                 return False
             else:
                 job.model = model
