@@ -1,6 +1,12 @@
 import os
 import io
 import gc
+import json
+import time
+import uuid
+import shutil
+import sys
+import pandas as pd
 from aihandler.tml.topicdiscoverer import TopicDiscoverer
 from aihandler.tml.topicmodeller import TopicModeller
 from dbhandler.mysql_handler import MySQLHandler
@@ -9,12 +15,8 @@ from orcomm_module.orcommunicator import ORCommunicator
 from threading import Timer
 from task_module.models.job import Job
 from task_module.models.datacomplex import DataComplex
-import pandas as pd
-import json
-import time
-import uuid
-import shutil
-import sys
+from orcomm_module.orevent import OREvent 
+
 #sys.setrecursionlimit(100)
 
 class AIntel:
@@ -25,6 +27,7 @@ class AIntel:
         self.orcomm = ORCommunicator(os.environ['AWS_REGION'], os.environ['AWS_ACCESS_KEY'], os.environ['AWS_SECRET_KEY'])
         self.orcomm.addQueue(os.environ['TRAIN_SQS_QUEUE_NAME'], os.environ['TRAIN_SQS_QUEUE_ARN'])
         self.orcomm.addQueue(os.environ['PREDICT_SQS_QUEUE_NAME'], os.environ['PREDICT_SQS_QUEUE_ARN'])
+        self.orcomm.addTopic(os.environ['JOBS_NAME_TOPIC'], os.environ['JOBS_ARN_TOPIC'])
         self.timer = None
         self.intervalIsActive = False
         self.taskIsActive = False
@@ -54,11 +57,14 @@ class AIntel:
                 print('Will start', os.environ['TASK'], 'task...', flush=True)
                 self.taskIsActive = True
                 item = items[0]
-                status = self.postTask(job=item.MessageAttributes['jobId']['StringValue'], queueItem=item)
-                if status:
+                task = self.postTask(job=item.MessageAttributes['jobId']['StringValue'], queueItem=item)
+
+                if task['status']:
                     print('Task succeeded!', flush=True)
+                    self.sendEventForFinishedJob(task['job'])
                 else:
                     print('Task failed.', flush=True)
+                    self.sendEventForFinishedJob(task['job'])
                 try:
                     self.orcomm.getQueue(os.environ['PREDICT_SQS_QUEUE_ARN']).deleteItem(item.QueueUrl, item.ReceiptHandle)
                 except Exception as e:
@@ -71,7 +77,7 @@ class AIntel:
         resultsJob = self.db.get(jobQuery, paramsJob)
         if not resultsJob:
             self.cancellation(job, 'Job is invalid.')
-            return False
+            return {'status': False, 'job': None, 'message': 'Job is invalid.' }
         job = Job()
         job.id = resultsJob[0][0]
         job.label = resultsJob[0][1]
@@ -90,36 +96,47 @@ class AIntel:
         if job.status == 'completed' or job.status == 'cancelled':
             print('Task already executed.', flush=True)
             self.taskIsActive = False
-            return False
-
+            return {'status': False, 'job': job, 'message': 'Task already executed.' }
         dataQuery = ("SELECT id, fileName, format, kind, label, location FROM Data WHERE id = %s")
         if job.task == 'train':
             dataSource = self.populateDataComplex(job, job.data_source, dataQuery, 'Data source is invalid.')
             if not dataSource:
                 self.taskIsActive = False
-                return False
+                return {'status': False, 'job': job, 'message': 'Data source is invalid.' }
             else:
                 job.data_source = dataSource
         else:
             dataSample = self.populateDataComplex(job, job.data_sample, dataQuery, 'Data sample is invalid.')
             if not dataSample:
                 self.taskIsActive = False
-                return False
+                return {'status': False, 'job': job, 'message': 'Data sample is invalid.' }
             else:
                 job.data_sample = dataSample
             model = self.populateDataComplex(job, job.model, dataQuery, 'Model is invalid.')
             if not model:
                 self.taskIsActive = False
-                return False
+                return {'status': False, 'job': job, 'message': 'Model is invalid.' }
             else:
                 job.model = model
         if job.kind == 'tml':
             status = self.execTML(job)
             self.taskIsActive = False
-            return status
+            return {'status': status, 'job': job, 'message': '' }
         else:
-            return False
+            return {'status': False, 'job': job, 'message': '' }
+        
     
+    def sendEventForFinishedJob(self, job):
+        # create event
+        jobDict = job.__dict__.copy()
+        del jobDict['swagger_types']
+        del jobDict['attribute_map']
+        event = OREvent()
+        event.TopicArn = os.environ['JOBS_ARN_TOPIC']
+        event.Subject = 'Send Job'
+        event.Message = json.dumps(jobDict)
+        response = self.orcomm.getTopic(os.environ['JOBS_ARN_TOPIC']).broadcastEvent(event)
+        return response
 
     def populateDataComplex(self, job, target, dataQuery, errorMsg):
         paramsData = (target,)
