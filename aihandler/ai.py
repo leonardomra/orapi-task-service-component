@@ -25,7 +25,6 @@ class AIntel:
         self.orcomm = ORCommunicator(os.environ['AWS_REGION'], os.environ['AWS_ACCESS_KEY'], os.environ['AWS_SECRET_KEY'])
         self.orcomm.addQueue(os.environ['TRAIN_SQS_QUEUE_NAME'], os.environ['TRAIN_SQS_QUEUE_ARN'])
         self.orcomm.addQueue(os.environ['PREDICT_SQS_QUEUE_NAME'], os.environ['PREDICT_SQS_QUEUE_ARN'])
-        #self.td = TopicDiscoverer()
         self.timer = None
         self.intervalIsActive = False
         self.taskIsActive = False
@@ -140,6 +139,7 @@ class AIntel:
 
     def execTML(self, job):
         tm = TopicModeller(self.s3)
+        td = TopicDiscoverer()
         if job.task == 'train':
             start_time = time.time()
             print('will load dataset for training...', flush=True)
@@ -169,7 +169,7 @@ class AIntel:
             vectorsBin = tm.CSV2Topics(sampleCSV, job.task_params)
             if not vectorsBin:
                 return self.cancellation(job, 'Wrong key.')
-            result = self.td.discover(vectorsBin)
+            result = td.discover(vectorsBin)
             self.persistResult(job, result)
             self.updateJobStatus(job, 'completed')
             elapsed_time = time.time() - start_time
