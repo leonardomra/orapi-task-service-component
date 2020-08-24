@@ -1,0 +1,215 @@
+openapi: 3.0.0
+info:
+  title: Task.ai API
+  description: The OpenResearch API (OR-API) provides users with machine learning-powered
+    NLP tools for scientific text analysis and exploration. In addition to allowing
+    the training of custom models with custom data, the OR-API enables users to integrate
+    the insights from the analysis into dashboards and applications.
+  termsOfService: http://
+  contact:
+    name: OpenResearch COVID-19 GbR
+    url: https://openresearch.cloud
+    email: contact@openresearch.cloud
+  license:
+    name: Apache License - Version 2.0, January 2004
+    url: http://www.apache.org/licenses//
+  version: 1.0.0
+#servers:
+#- url: https://virtserver.swaggerhub.com/OR-API/task-api/1.0.0
+#  description: SwaggerHub API Auto Mocking
+#- url: https://virtserver.swaggerhub.com/OR-API/job-api/1.0.0
+#  description: SwaggerHub API Auto Mocking
+paths:
+  /task/health:
+    get:
+      tags:
+      - service
+      description: Check health of service.
+      operationId: task_health_get
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+      x-openapi-router-controller: task_module.controllers.service_controller
+  /task/topic/confirm:
+    post:
+      tags:
+      - topic
+      description: Check health of subscription.
+      operationId: task_topic_confirm_post
+      parameters:
+      - name: x_amz_sns_message_type
+        in: header
+        description: The type of message. The possible values are SubscriptionConfirmation,
+          Notification, and UnsubscribeConfirmation.
+        required: false
+        style: simple
+        explode: false
+        schema:
+          type: string
+          example: SubscriptionConfirmation
+      - name: x_amz_sns_message_id
+        in: header
+        description: A Universally Unique Identifier, unique for each message published.
+          For a notification that Amazon SNS resends during a retry, the message ID
+          of the original message is used.
+        required: false
+        style: simple
+        explode: false
+        schema:
+          type: string
+          example: 165545c9-2a5c-472c-8df2-7ff2be2b3b1b
+      - name: x_amz_sns_topic_arn
+        in: header
+        description: The Amazon Resource Name (ARN) for the topic that this message
+          was published to.
+        required: false
+        style: simple
+        explode: false
+        schema:
+          type: string
+          example: arn:aws:sns:us-west-2:123456789012:MyTopic
+      requestBody:
+        description: The subscription confirmation message is a POST message with
+          a message body that contains a JSON document with name-value pairs.
+        content:
+          text/plain:
+            schema:
+              type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+      x-openapi-router-controller: task_module.controllers.topic_controller
+  /task:
+    get:
+      tags:
+      - task
+      description: Obtain information about tasks.
+      operationId: task_get
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Tasks'
+                x-content-type: application/json
+      x-openapi-router-controller: task_module.controllers.task_controller
+    post:
+      tags:
+      - task
+      description: Create a task.
+      operationId: task_post
+      parameters:
+      - name: job
+        in: header
+        description: Id of Job.
+        required: true
+        style: simple
+        explode: false
+        schema:
+          type: string
+          format: uuid
+          example: 4baa97f6-c10f-11ea-b3de-0242ac130004
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Tasks'
+                x-content-type: application/json
+      x-openapi-router-controller: task_module.controllers.task_controller
+components:
+  schemas:
+    Health:
+      type: object
+      properties:
+        status:
+          format: string
+          example: Job Service Component is up!
+      example:
+        status: Job Service Component is up!
+    Tasks:
+      type: object
+      properties:
+        job:
+          type: string
+          format: uuid
+          example: 4baa97f6-c10f-11ea-b3de-0242ac130004
+      description: Task metadata.
+      example:
+        job: 4baa97f6-c10f-11ea-b3de-0242ac130004
+    Job:
+      required:
+      - dateCreated
+      - dateModified
+      - id
+      - kind
+      - label
+      - status
+      - user
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 4baa97f6-c10f-11ea-b3de-0242ac130004
+        user:
+          type: string
+          format: uuid
+          example: 4baa97f6-c10f-11ea-b3de-0242ac130004
+        label:
+          type: string
+          example: Topic modeling CORD-19.
+        description:
+          type: string
+          example: Model trained on 40k scientific papers about COVID-19.
+        kind:
+          type: string
+          example: tml
+        model:
+          type: string
+          format: uuid
+          example: 4baa97f6-c10f-11ea-b3de-0242ac130004
+        dataSource:
+          type: string
+          format: uuid
+          example: 4baa97f6-c10f-11ea-b3de-0242ac130004
+        dataSample:
+          type: string
+          format: uuid
+          example: 4baa97f6-c10f-11ea-b3de-0242ac130004
+        status:
+          type: string
+          example: waiting
+        output:
+          type: string
+          format: uuid
+          example: 4baa97f6-c10f-11ea-b3de-0242ac130004
+        task:
+          type: string
+        taskParams:
+          type: string
+          example: '{ param01: val, param02: val }'
+        dateCreated:
+          type: string
+          format: date-time
+          example: 2017-07-21T17:32:28Z
+        dateModified:
+          type: string
+          format: date-time
+          example: 2017-07-21T17:32:28Z
+      description: Model of a job.
+
