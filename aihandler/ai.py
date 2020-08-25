@@ -61,11 +61,10 @@ class AIntel:
 
                 if task['status']:
                     print('Task succeeded!', flush=True)
-                    print(self.sendEventForFinishedJob(task['job']), flush=True)
                 else:
                     print('Task failed.', flush=True)
-                    print(self.sendEventForFinishedJob(task['job']), flush=True)
                 try:
+                    print(self.sendEventForFinishedJob(task['job']), flush=True)
                     self.orcomm.getQueue(os.environ['PREDICT_SQS_QUEUE_ARN']).deleteItem(item.QueueUrl, item.ReceiptHandle)
                 except Exception as e:
                     print(e, flush=True)
