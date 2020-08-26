@@ -2,14 +2,14 @@
 
 import connexion
 from task_module import encoder
-from aihandler.ai import AIntel
+from aihandler.ai_tml import TML
 
 def main():
     app = connexion.App(__name__, specification_dir='./swagger/')
     app.app.json_encoder = encoder.JSONEncoder
     app.add_api('swagger.yaml', arguments={'title': 'Task.ai API'}, pythonic_params=True)
     with app.app.app_context():
-        ai = AIntel()
+        tml = TML()
     app.run(port=80)
 
 

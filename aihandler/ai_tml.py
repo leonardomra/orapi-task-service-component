@@ -19,7 +19,7 @@ from orcomm_module.orevent import OREvent
 
 #sys.setrecursionlimit(100)
 
-class AIntel:
+class TML:
 
     def __init__(self):
         self.db = MySQLHandler(os.environ['MYSQL_USER'], os.environ['MYSQL_PASSWORD'], os.environ['MYSQL_HOST'], os.environ['MYSQL_DATABASE'])
