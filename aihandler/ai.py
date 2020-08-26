@@ -65,6 +65,9 @@ class AIntel:
                     print('Task failed.', flush=True)
                 try:
                     print(self.sendEventForFinishedJob(task['job']), flush=True)
+                except Exception as e:
+                    print(e, flush=True)
+                try:
                     self.orcomm.getQueue(os.environ['PREDICT_SQS_QUEUE_ARN']).deleteItem(item.QueueUrl, item.ReceiptHandle)
                 except Exception as e:
                     print(e, flush=True)
@@ -92,6 +95,7 @@ class AIntel:
         job.task_params = json.loads(job.task_params)
         job.user = resultsJob[0][11]
         # populate source, sample and model
+        print(job.id, job.status, flush=True)
         if job.status == 'completed' or job.status == 'cancelled':
             print('Task already executed.', flush=True)
             self.taskIsActive = False
@@ -132,7 +136,7 @@ class AIntel:
         del jobDict['attribute_map']
         event = OREvent()
         event.TopicArn = os.environ['JOBS_ARN_TOPIC']
-        event.Subject = 'Send Job'
+        event.Subject = 'Finish Job'
         event.Message = json.dumps(jobDict)
         response = self.orcomm.getTopic(os.environ['JOBS_ARN_TOPIC']).broadcastEvent(event)
         return response
@@ -167,7 +171,6 @@ class AIntel:
                 if not vectorsBin:
                     return self.cancellation(job, 'Wrong key.')    
             except Exception as e:
-                print('001', flush=True)
                 return self.cancellation(job, e)
             print('will upload model...', flush=True)
             self.persistModel(vectorsBin, job)
