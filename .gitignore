@@ -73,3 +73,5 @@ settings.json
 .csv
 .sav
 tmp/
+data/
+mlruns/

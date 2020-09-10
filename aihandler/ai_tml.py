@@ -9,25 +9,19 @@ import sys
 import pandas as pd
 from aihandler.tml.topicdiscoverer import TopicDiscoverer
 from aihandler.tml.topicmodeller import TopicModeller
-from dbhandler.mysql_handler import MySQLHandler
-from s3handler.s3_handler import S3Handler
-from orcomm_module.orcommunicator import ORCommunicator
 from threading import Timer
 from task_module.models.job import Job
 from task_module.models.datacomplex import DataComplex
-from orcomm_module.orevent import OREvent 
+from orcomm_module.orevent import OREvent
 
 #sys.setrecursionlimit(100)
 
 class TML:
 
-    def __init__(self):
-        self.db = MySQLHandler(os.environ['MYSQL_USER'], os.environ['MYSQL_PASSWORD'], os.environ['MYSQL_HOST'], os.environ['MYSQL_DATABASE'])
-        self.s3 = S3Handler(os.environ['AWS_REGION'], os.environ['AWS_ACCESS_KEY'], os.environ['AWS_SECRET_KEY'])
-        self.orcomm = ORCommunicator(os.environ['AWS_REGION'], os.environ['AWS_ACCESS_KEY'], os.environ['AWS_SECRET_KEY'])
-        self.orcomm.addQueue(os.environ['TRAIN_SQS_QUEUE_NAME'], os.environ['TRAIN_SQS_QUEUE_ARN'])
-        self.orcomm.addQueue(os.environ['PREDICT_SQS_QUEUE_NAME'], os.environ['PREDICT_SQS_QUEUE_ARN'])
-        self.orcomm.addTopic(os.environ['JOBS_NAME_TOPIC'], os.environ['JOBS_ARN_TOPIC'])
+    def __init__(self, db, s3, orcomm):
+        self.db = db
+        self.s3 = s3
+        self.orcomm = orcomm
         self.timer = None
         self.intervalIsActive = False
         self.taskIsActive = False
