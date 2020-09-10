@@ -20,8 +20,10 @@ def main():
         orcomm.addQueue(os.environ['TRAIN_SQS_QUEUE_NAME'], os.environ['TRAIN_SQS_QUEUE_ARN'])
         orcomm.addQueue(os.environ['PREDICT_SQS_QUEUE_NAME'], os.environ['PREDICT_SQS_QUEUE_ARN'])
         orcomm.addTopic(os.environ['JOBS_NAME_TOPIC'], os.environ['JOBS_ARN_TOPIC'])
-        #tml = TML(db, s3, orcomm)
-        QNA(db, s3, orcomm)
+        if os.environ['TASK'] == 'train-tml' or os.environ['TASK'] == 'analyse-tml':
+            TML(db, s3, orcomm)
+        elif os.environ['TASK'] == 'train-qna' or os.environ['TASK'] == 'analyse-qna':
+            QNA(db, s3, orcomm)
     app.run(port=80)
 
 

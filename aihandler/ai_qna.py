@@ -1,4 +1,7 @@
 import os
+import gc
+import time
+from aihandler.ai_tsk import TSK
 from haystack import Finder
 from haystack.indexing.cleaning import clean_wiki_text
 from haystack.indexing.utils import convert_files_to_dicts, fetch_archive_from_http
@@ -8,22 +11,32 @@ from haystack.utils import print_answers
 from haystack.database.elasticsearch import ElasticsearchDocumentStore
 from haystack.retriever.sparse import ElasticsearchRetriever
 
-class QNA:
+class QNA(TSK):
 
     def __init__(self, db, s3, orcomm):
-        self.db = db
-        self.s3 = s3
-        self.orcomm = orcomm
-        self.timer = None
-        self.intervalIsActive = False
-        self.taskIsActive = False
-        #self.startTimer()
+        TSK.__init__(self, db, s3, orcomm)
+        self._taskKind = 'qna'
         self.documentStore = self.connectElasticSearch()
         #self.injectSampleData(self.documentStore)
-        retriever = self.setRetriever(self.documentStore)
-        reader = self.setReader()
-        self.setPrediction(reader, retriever)
+        self.retriever = self.setRetriever(self.documentStore)
+        self.reader = self.setReader()
+        #self.setPrediction(reader, retriever)
+        self.startTimer()
 
+    def execML(self, job):
+        if job.task == 'analyse':
+            start_time = time.time()
+            print(job.task_params['questions'], flush=True)
+            self.setPrediction(self.reader, self.retriever)
+            elapsed_time = time.time() - start_time
+            print('Execution time max: ', elapsed_time, 'for job.id:', job.id,  flush=True)
+        elif job.task == 'train':
+            start_time = time.time()
+            
+            elapsed_time = time.time() - start_time
+            print('Execution time max: ', elapsed_time, 'for job.id:', job.id,  flush=True) 
+        return True
+    
     def connectElasticSearch(self):
         return ElasticsearchDocumentStore(host='elasticsearch', username='', password='', index='document')
 

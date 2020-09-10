@@ -14,9 +14,7 @@ from task_module.models.job import Job
 from task_module.models.datacomplex import DataComplex
 from orcomm_module.orevent import OREvent
 
-#sys.setrecursionlimit(100)
-
-class TML:
+class TSK:
 
     def __init__(self, db, s3, orcomm):
         self.db = db
@@ -25,37 +23,35 @@ class TML:
         self.timer = None
         self.intervalIsActive = False
         self.taskIsActive = False
-        self.startTimer()
+        self._taskKind = None
 
 
     def startTimer(self):
-        print('>', 'Start listening for tasks... TML', flush=True)
+        print('>', 'Start listening for tasks...', self._taskKind, flush=True)
         while True:
             gc.collect()
             time.sleep(2)
             self.getTask()
-        
-    
+
+
     def getTask(self):  # noqa: E501
         if self.taskIsActive == True:
-            print('executing task... TML', flush=True)
+            print('executing task...' + self._taskKind, flush=True)
         else:
-            if os.environ['TASK'] == 'train-tml':
+            if os.environ['TASK'] == 'train-' + self._taskKind:
                 items = self.orcomm.itemsForQueue(os.environ['TRAIN_SQS_QUEUE_NAME'], os.environ['TRAIN_SQS_QUEUE_ARN'], ['jobId', 'jobStatus', 'jobTask', 'jobKind', 'order'], 1, False)
-            elif os.environ['TASK'] == 'analyse-tml':
+            elif os.environ['TASK'] == 'analyse-' + self._taskKind:
                 items = self.orcomm.itemsForQueue(os.environ['PREDICT_SQS_QUEUE_NAME'], os.environ['PREDICT_SQS_QUEUE_ARN'], ['jobId', 'jobStatus', 'jobTask', 'jobKind', 'order'], 1, False)  
             if not items:
                 #print('Waiting for', os.environ['TASK'], 'task...', flush=True)
                 pass
             else:
-                
-                
                 item = items[0]
-                if item.MessageAttributes['jobKind']['StringValue'] != 'tml':
+                if item.MessageAttributes['jobKind']['StringValue'] != self._taskKind:
                     return
                 
                 print('Will start', os.environ['TASK'], 'task...', flush=True)
-                
+
                 self.taskIsActive = True
                 task = self.postTask(job=item.MessageAttributes['jobId']['StringValue'], queueItem=item)
 
@@ -121,13 +117,16 @@ class TML:
                 return {'status': False, 'job': job, 'message': 'Model is invalid.' }
             else:
                 job.model = model
-        if job.kind == 'tml':
+        if job.kind == self._taskKind:
             status = self.execML(job)
             self.taskIsActive = False
             return {'status': status, 'job': job, 'message': '' }
         else:
             return {'status': False, 'job': job, 'message': '' }
-        
+    
+
+    def execML(self, job): 
+        return True
     
     def sendEventForFinishedJob(self, job):
         # create event
@@ -157,45 +156,6 @@ class TML:
         }
         return target
 
-    def execML(self, job):
-        tm = TopicModeller(self.s3)
-        td = TopicDiscoverer()
-        if job.task == 'train':
-            start_time = time.time()
-            print('will load dataset for training...', flush=True)
-            csvData = self.downloadAndConvertCSV(job, job.data_source)
-            print('will train model...', flush=True)
-            try:
-                self.updateJobStatus(job, 'training')
-                vectorsBin = tm.CSV2Vectors(csvData, job.task_params)
-                if not vectorsBin:
-                    return self.cancellation(job, 'Wrong key.')    
-            except Exception as e:
-                return self.cancellation(job, e)
-            print('will upload model...', flush=True)
-            self.persistModel(vectorsBin, job)
-            self.updateJobStatus(job, 'completed')
-            elapsed_time = time.time() - start_time
-            print('Execution time max: ', elapsed_time, 'for job.id:', job.id,  flush=True)
-        elif job.task == 'analyse':
-            start_time = time.time()
-            print('will load sample dataset for analysis...', flush=True)
-            sampleCSV = self.downloadAndConvertCSV(job, job.data_sample)
-            print('will load model...', flush=True)
-            self.downloadAndStoreModel(job, job.model)
-            print('will analyse data...', flush=True)
-            self.updateJobStatus(job, 'analysing')
-            vectorsBin = tm.CSV2Topics(sampleCSV, job.task_params)
-            if not vectorsBin:
-                return self.cancellation(job, 'Wrong key.')
-            result = td.discover(vectorsBin)
-            self.persistResult(job, result)
-            self.updateJobStatus(job, 'completed')
-            elapsed_time = time.time() - start_time
-            print('Execution time max: ', elapsed_time, 'for job.id:', job.id,  flush=True) 
-        tm = None
-        return True
-    
 
     def persistResult(self, job, result):
         inMemoryFile = io.BytesIO()
@@ -204,13 +164,13 @@ class TML:
         locationSplit = job.model['location'].split('/')
         bucketName = locationSplit[0]
         user = locationSplit[1]
-        s3Resp = self.s3.uploadFileObject(inMemoryFile, bucketName, user + '/' + job.id + '_tml-result.json')
+        s3Resp = self.s3.uploadFileObject(inMemoryFile, bucketName, user + '/' + job.id + '_' + self._taskKind + '-result.json')
         print(s3Resp, flush=True)
         if s3Resp:
             dataset = DataComplex()
             dataset.id = str(uuid.uuid4())
-            dataset.file_name = job.id + '_tml-result.json'
-            dataset.location = bucketName + '/' + user + '/' + job.id + '_tml-result.json'
+            dataset.file_name = job.id + '_' + self._taskKind + '-result.json'
+            dataset.location = bucketName + '/' + user + '/' + job.id + '_' + self._taskKind + '-result.json'
             dataset.kind = 'result'
             dataset.format = 'application/json'
             dataset.label = 'Results of job ' + job.id + '.'  
@@ -248,7 +208,7 @@ class TML:
         if not fileData:
             return self.cancellation(job, 'Problem downloading object from S3.')
         fileData.seek(0)
-        with open('tmp/tml-model.sav', 'wb') as f:
+        with open('tmp/' + self._taskKind + '-model.sav', 'wb') as f:
             shutil.copyfileobj(fileData, f)
         return True
 
@@ -270,12 +230,12 @@ class TML:
         locationSplit = job.data_source['location'].split('/')
         bucketName = locationSplit[0]
         user = locationSplit[1]
-        s3Resp = self.s3.uploadFileObject(vectorsBin, bucketName, user + '/' + job.id + '_tml-model.sav')
+        s3Resp = self.s3.uploadFileObject(vectorsBin, bucketName, user + '/' + job.id + '_' + self._taskKind + '-model.sav')
         if s3Resp:
             dataset = DataComplex()
             dataset.id = str(uuid.uuid4())
-            dataset.file_name = job.id + '_tml-model.sav'
-            dataset.location = bucketName + '/' + user + '/' + job.id + '_tml-model.sav'
+            dataset.file_name = job.id + '_' + self._taskKind + '-model.sav'
+            dataset.location = bucketName + '/' + user + '/' + job.id + '_' + self._taskKind + '-model.sav'
             dataset.kind = 'model'
             dataset.format = 'application/octet-stream'
             dataset.label = 'Model created for user ' + user + ' as a result of a TML Training job.'  
