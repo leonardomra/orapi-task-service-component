@@ -106,13 +106,13 @@ class TSK:
                 job.data_source = dataSource
         else:
             dataSample = self.populateDataComplex(job, job.data_sample, dataQuery, 'Data sample is invalid.')
-            if not dataSample:
+            if not dataSample and job.kind == 'tml':
                 self.taskIsActive = False
                 return {'status': False, 'job': job, 'message': 'Data sample is invalid.' }
             else:
                 job.data_sample = dataSample
             model = self.populateDataComplex(job, job.model, dataQuery, 'Model is invalid.')
-            if not model:
+            if not model and job.kind == 'tml':
                 self.taskIsActive = False
                 return {'status': False, 'job': job, 'message': 'Model is invalid.' }
             else:
@@ -160,8 +160,11 @@ class TSK:
     def persistResult(self, job, result):
         inMemoryFile = io.BytesIO()
         inMemoryFile.write(json.dumps(result).encode())
-        inMemoryFile.seek(0)   
-        locationSplit = job.model['location'].split('/')
+        inMemoryFile.seek(0) 
+        if job.kind == 'tml':   
+            locationSplit = job.model['location'].split('/')
+        elif job.kind == 'qna':
+            locationSplit = ['openresearch', job.user]
         bucketName = locationSplit[0]
         user = locationSplit[1]
         s3Resp = self.s3.uploadFileObject(inMemoryFile, bucketName, user + '/' + job.id + '_' + self._taskKind + '-result.json')
