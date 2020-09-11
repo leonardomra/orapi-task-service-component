@@ -55,7 +55,7 @@ class TML:
                     return
                 
                 print('Will start', os.environ['TASK'], 'task...', flush=True)
-                
+
                 self.taskIsActive = True
                 task = self.postTask(job=item.MessageAttributes['jobId']['StringValue'], queueItem=item)
 
@@ -196,6 +196,29 @@ class TML:
         tm = None
         return True
     
+    def persistModel(self, vectorsBin, job):
+        locationSplit = job.data_source['location'].split('/')
+        bucketName = locationSplit[0]
+        user = locationSplit[1]
+        s3Resp = self.s3.uploadFileObject(vectorsBin, bucketName, user + '/' + job.id + '_tml-model.sav')
+        if s3Resp:
+            dataset = DataComplex()
+            dataset.id = str(uuid.uuid4())
+            dataset.file_name = job.id + '_tml-model.sav'
+            dataset.location = bucketName + '/' + user + '/' + job.id + '_tml-model.sav'
+            dataset.kind = 'model'
+            dataset.format = 'application/octet-stream'
+            dataset.label = 'Model created for user ' + user + ' as a result of a TML Training job.'  
+            # store persistent data
+            add_dataset = ("INSERT INTO Data "
+                    "(id, fileName, format, kind, label, location) "
+                    "VALUES (%s, %s, %s, %s, %s, %s)")
+            data_dataset = (dataset.id, dataset.file_name, dataset.format, dataset.kind, dataset.label, dataset.location)
+            self.db.add(add_dataset, data_dataset)
+            updateJobQuery = ("UPDATE Job SET model = %s WHERE id = %s")
+            paramsStart = (dataset.id, job.id)
+            self.db.update(updateJobQuery, paramsStart)
+
 
     def persistResult(self, job, result):
         inMemoryFile = io.BytesIO()
@@ -264,24 +287,3 @@ class TML:
         self.updateJobStatus(job, 'cancelled')
         self.taskIsActive = False
         return False
-
-    
-    def persistModel(self, vectorsBin, job):
-        locationSplit = job.data_source['location'].split('/')
-        bucketName = locationSplit[0]
-        user = locationSplit[1]
-        s3Resp = self.s3.uploadFileObject(vectorsBin, bucketName, user + '/' + job.id + '_tml-model.sav')
-        if s3Resp:
-            dataset = DataComplex()
-            dataset.id = str(uuid.uuid4())
-            dataset.file_name = job.id + '_tml-model.sav'
-            dataset.location = bucketName + '/' + user + '/' + job.id + '_tml-model.sav'
-            dataset.kind = 'model'
-            dataset.format = 'application/octet-stream'
-            dataset.label = 'Model created for user ' + user + ' as a result of a TML Training job.'  
-            # store persistent data
-            add_dataset = ("INSERT INTO Data "
-                    "(id, fileName, format, kind, label, location) "
-                    "VALUES (%s, %s, %s, %s, %s, %s)")
-            data_dataset = (dataset.id, dataset.file_name, dataset.format, dataset.kind, dataset.label, dataset.location)
-            self.db.add(add_dataset, data_dataset)

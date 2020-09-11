@@ -43,7 +43,7 @@ class S3Handler():
 
     def uploadFile(self, bucket_name, filename):
         try:
-            self.s3.upload_file(filename, bucket_name, filename)
+            self.s3.upload_file(filename, bucket_name, filename, ExtraArgs={'ACL':'public-read'})
         except ClientError as e:
             logging.error(e)
             return False
@@ -74,13 +74,13 @@ class S3Handler():
         response = None
         if useResource:
             try:
-                response = self.s3Resource.Object(bucket_name, filename).put(Body=data)
+                response = self.s3Resource.Object(bucket_name, filename).put(Body=data, ACL='public-read')
             except ClientError as e:
                 logging.error(e)
                 return False
         else:
             try:
-                response = self.s3.put_object(Body=data, Bucket=bucket_name, Key=filename)
+                response = self.s3.put_object(Body=data, Bucket=bucket_name, Key=filename, ExtraArgs={'ACL':'public-read'})
             except ClientError as e:
                 logging.error(e)
                 return False  
