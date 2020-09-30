@@ -48,12 +48,9 @@ class TML:
                 #print('Waiting for', os.environ['TASK'], 'task...', flush=True)
                 pass
             else:
-                
-                
                 item = items[0]
                 if item.MessageAttributes['jobKind']['StringValue'] != 'tml':
                     return
-                
                 print('Will start', os.environ['TASK'], 'task...', flush=True)
 
                 self.taskIsActive = True

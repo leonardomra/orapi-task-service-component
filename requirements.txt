@@ -35,3 +35,5 @@ pandas==1.0.3
 numpy==1.18.2
 joblib==0.16.0
 farm-haystack==0.3.0
+py7zr==0.9.7
+fs==2.4.11

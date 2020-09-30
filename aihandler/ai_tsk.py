@@ -6,7 +6,9 @@ import time
 import uuid
 import shutil
 import sys
+import zipfile
 import pandas as pd
+from pathlib import Path
 from aihandler.tml.topicdiscoverer import TopicDiscoverer
 from aihandler.tml.topicmodeller import TopicModeller
 from threading import Timer
@@ -203,7 +205,7 @@ class TSK:
         return csvData
     
 
-    def downloadAndStoreModel(self, job, target):
+    def downloadAndStoreSAVModel(self, job, target):
         locationSplit = target['location'].split('/')
         bucketName = locationSplit[0]
         key = locationSplit[1] + '/' + locationSplit[2]
@@ -215,6 +217,21 @@ class TSK:
             shutil.copyfileobj(fileData, f)
         return True
 
+    def downloadAndStoreZIPModel(self, job, target):
+        locationSplit = target['location'].split('/')
+        bucketName = locationSplit[0]
+        key = locationSplit[1] + '/' + locationSplit[2]
+        fileData = self.s3.downloadFile(bucketName, key)
+        if not fileData:
+            return self.cancellation(job, 'Problem downloading object from S3.')
+        fileData.seek(0)
+        Path('tmp/' + job.id).mkdir(parents=True, exist_ok=True)
+        zf = zipfile.ZipFile(fileData, 'r')
+        for name in zf.namelist():
+            print(name, flush=True)
+            with open('tmp/' + job.id + '/' + name, 'wb') as f:
+                f.write(zf.read(name))
+        return True
 
     def updateJobStatus(self, job, status):
         updateJobQuery = ("UPDATE Job SET status = %s WHERE id = %s")
