@@ -39,7 +39,7 @@ class TSK:
 
 
     def getTask(self):  # noqa: E501
-        print('INFO:', 'listening:', self._taskKind, '...', flush=True)
+        #print('INFO:', 'listening:', self._taskKind, '...', flush=True)
         if self.taskIsActive == True:
             print('INFO:', 'will execute task:', self._taskKind, '...', flush=True)
         else:
@@ -61,13 +61,13 @@ class TSK:
                 else:
                     print('INFO:', 'task failed.', flush=True)
                 try:
-                    print(self.sendEventForFinishedJob(task['job']), flush=True) # SEND MESSAGE AS WELL - do not send message to the user if the task was already executed, please!
+                    print(self.sendEventForFinishedJob(task), flush=True) # SEND MESSAGE AS WELL - do not send message to the user if the task was already executed, please!
                 except Exception as e:
-                    print('ERROR:', e, flush=True)
+                    print('ERROR getTask0:', e, flush=True)
                 try:
                     self.orcomm.getQueue(os.environ['PREDICT_SQS_QUEUE_ARN']).deleteItem(item.QueueUrl, item.ReceiptHandle)
                 except Exception as e:
-                    print('ERROR:' ,e, flush=True)
+                    print('ERROR getTask1:', e, flush=True)
 
 
     def postTask(self, job=None, queueItem=None):  # noqa: E501
@@ -96,13 +96,13 @@ class TSK:
         if job.status == 'completed' or job.status == 'cancelled':
             print('Task already executed.', flush=True)
             self.taskIsActive = False
-            return {'status': False, 'job': job, 'message': 'Task already executed.' }
+            return {'status': False, 'job': job, 'message': 'Task already executed.', 'code': 'executed' }
         dataQuery = ("SELECT id, fileName, format, kind, label, location FROM Data WHERE id = %s")
         if job.task == 'train':
             dataSource = self.populateDataComplex(job, job.data_source, dataQuery, 'Data source is invalid.')
             if not dataSource:
                 self.taskIsActive = False
-                return {'status': False, 'job': job, 'message': 'Data source is invalid.' }
+                return {'status': False, 'job': job, 'message': 'Data source is invalid.', 'code': 'error' }
             else:
                 job.data_source = dataSource
         else:
@@ -119,26 +119,32 @@ class TSK:
             else:
                 job.model = model
         if job.kind == self._taskKind:
-            status = self.execML(job)
+            response = self.execML(job)
             self.taskIsActive = False
-            return {'status': status, 'job': job, 'message': '' }
+            return {'status': response['status'], 'job': job, 'message': response['msg'], 'code': response['code'] }
         else:
-            return {'status': False, 'job': job, 'message': '' }
+            return {'status': False, 'job': job, 'message': '', 'code': 'unfitting' }
     
 
     def execML(self, job): 
-        return True
+        #return True
+        return {'status': False, 'code': 'interface', 'msg': None }
 
 
-    def sendEventForFinishedJob(self, job):
+    def sendEventForFinishedJob(self, task):
         # create event
+        job = task['job']
         jobDict = job.__dict__.copy()
         del jobDict['swagger_types']
         del jobDict['attribute_map']
         event = OREvent()
         event.TopicArn = os.environ['JOBS_ARN_TOPIC']
         event.Subject = 'Finish Job'
-        event.Message = json.dumps(jobDict)
+        jjson = json.loads(json.dumps(jobDict))
+        jjson['code'] =  task['code']
+        jjson['message'] =  task['message']
+        print(jjson, flush=True)
+        event.Message = json.dumps(jjson)
         response = self.orcomm.getTopic(os.environ['JOBS_ARN_TOPIC']).broadcastEvent(event)
         return response
 

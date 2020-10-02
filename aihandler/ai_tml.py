@@ -42,9 +42,11 @@ class TML(TSK):
                 self.updateJobStatus(job, 'training')
                 vectorsBin = tm.CSV2Vectors(csvData, job.task_params)
                 if not vectorsBin:
-                    return self.cancellation(job, 'Wrong key.')    
+                    #return self.cancellation(job, 'Wrong key.')
+                    return {'status': self.cancellation(job, 'Wrong key.'), 'code': 'error', 'msg': 'ERROR: Wrong key.' }
             except Exception as e:
-                return self.cancellation(job, e)
+                #return self.cancellation(job, e)
+                return {'status': self.cancellation(job, e), 'code': 'error', 'msg': e } 
             print('will upload model...', flush=True)
             self.persistModel(vectorsBin, job)
             self.updateJobStatus(job, 'completed')
@@ -61,7 +63,8 @@ class TML(TSK):
             self.updateJobStatus(job, 'analysing')
             vectorsBin = tm.CSV2Topics(sampleCSV, job.task_params)
             if not vectorsBin:
-                return self.cancellation(job, 'Wrong key.')
+                #return self.cancellation(job, 'Wrong key.')
+                return {'status': self.cancellation(job, 'Wrong key.'), 'code': 'error', 'msg': 'ERROR: Wrong key.' }
             result = td.discover(vectorsBin)
             self.persistResult(job, result)
             self.updateJobStatus(job, 'completed')
@@ -72,4 +75,5 @@ class TML(TSK):
             del result
         del tm
         del td
-        return True
+        #return True
+        return {'status': True, 'code': 'ok', 'msg': 'success' }

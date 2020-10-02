@@ -22,8 +22,8 @@ class ORCommunicator():
         channel = ORChannel(channelName)
         self.channels[channelName] = channel
 
-    def addQueue(self, queueName=None, queueArn=None):
-        queue = ORQueue(self.awsRegion, self.awsAccessKey, self.awsSecretKey, queueName)
+    def addQueue(self, queueName=None, queueArn=None, queueURL=None):
+        queue = ORQueue(self.awsRegion, self.awsAccessKey, self.awsSecretKey, queueName, queueURL)
         self.queues[queueArn] = queue
 
     def getTopics(self):

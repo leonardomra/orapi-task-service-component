@@ -52,9 +52,9 @@ class QNA(TSK):
                     print('INFO: Index will be created...', flush=True)
                     documentStore.client.indices.create(index = self.index)
             if 'selectTargetTextColumn' not in job.task_params and 'selectTargetIdColumn' not in job.task_params:
-                print('ERROR: The keys selectTargetTextColumn & selectTargetIdColumn are missing.', flush=True)
                 self.updateJobStatus(job, 'cancelled')
-                return False
+                #return False
+                return {'status': False, 'code': 'error', 'msg': 'ERROR: The keys selectTargetTextColumn & selectTargetIdColumn are missing.' }
             self.updateJobStatus(job, 'analysing')
             if self.isDatasetPersistent(job, documentStore, self.index):
                 print('INFO: documents for index already stored.', flush=True)
@@ -70,9 +70,9 @@ class QNA(TSK):
                     del sampleCSV
                     del sampleJSON
                 except Exception as e:
-                    print('ERROR: Check values for selectTargetTextColumn & selectTargetIdColumn.', e, flush=True)
                     self.updateJobStatus(job, 'cancelled')
-                    return False
+                    #return False
+                    return {'status': False, 'code': 'error', 'msg': 'ERROR: Check values for selectTargetTextColumn & selectTargetIdColumn.' }
             print('INFO:', 'will donwload and store model...', flush=True)
             self.downloadAndStoreZIPModel(job, job.model)
             #tr = tracker.SummaryTracker()
@@ -97,7 +97,8 @@ class QNA(TSK):
             pass
             elapsed_time = time.time() - start_time
             print('Execution time max: ', elapsed_time, 'for job.id:', job.id,  flush=True) 
-        return True
+        #return True
+        return {'status': True, 'code': 'ok', 'msg': 'success' }
 
 
     def buildFilter(self, job):
