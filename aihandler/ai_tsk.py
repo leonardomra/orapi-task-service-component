@@ -19,6 +19,7 @@ from orcomm_module.orevent import OREvent
 
 class TSK:
 
+
     def __init__(self, db, s3, orcomm):
         self.db = db
         self.s3 = s3
@@ -205,7 +206,7 @@ class TSK:
         return csvData
     
 
-    def downloadAndStoreSAVModel(self, job, target):
+    def downloadAndStoreTMLModel(self, job, target):
         locationSplit = target['location'].split('/')
         bucketName = locationSplit[0]
         key = locationSplit[1] + '/' + locationSplit[2]
@@ -213,7 +214,7 @@ class TSK:
         if not fileData:
             return self.cancellation(job, 'Problem downloading object from S3.')
         fileData.seek(0)
-        with open('tmp/' + self._taskKind + '-model.sav', 'wb') as f:
+        with open('tmp/' + self._taskKind + '-model.tml', 'wb') as f:
             shutil.copyfileobj(fileData, f)
         del fileData
         return True
@@ -222,8 +223,6 @@ class TSK:
     def downloadAndStoreZIPModel(self, job, target):
         modelIsPresent = False
         mappings = json.loads(os.environ['DEFAULT_MODEL_MAPPINGS'])
-        for d in os.scandir('./tmp'):
-            print(d.name, flush=True)
         for m in mappings:
             for key in list(m.keys()):
                 for d in os.scandir('./tmp'):
@@ -241,7 +240,6 @@ class TSK:
         Path('tmp/' + job.model['id']).mkdir(parents=True, exist_ok=True)
         zf = zipfile.ZipFile(fileData, 'r')
         for name in zf.namelist():
-            print(name, flush=True)
             with open('tmp/' + job.model['id'] + '/' + name, 'wb') as f:
                 f.write(zf.read(name))
         del fileData
@@ -266,12 +264,12 @@ class TSK:
         locationSplit = job.data_source['location'].split('/')
         bucketName = locationSplit[0]
         user = locationSplit[1]
-        s3Resp = self.s3.uploadFileObject(vectorsBin, bucketName, user + '/' + job.id + '_' + self._taskKind + '-model.sav')
+        s3Resp = self.s3.uploadFileObject(vectorsBin, bucketName, user + '/' + job.id + '_' + self._taskKind + '-model.tml')
         if s3Resp:
             dataset = DataComplex()
             dataset.id = str(uuid.uuid4())
-            dataset.file_name = job.id + '_' + self._taskKind + '-model.sav'
-            dataset.location = bucketName + '/' + user + '/' + job.id + '_' + self._taskKind + '-model.sav'
+            dataset.file_name = job.id + '_' + self._taskKind + '-model.tml'
+            dataset.location = bucketName + '/' + user + '/' + job.id + '_' + self._taskKind + '-model.tml'
             dataset.kind = 'model'
             dataset.format = 'application/octet-stream'
             dataset.label = 'Model created for user ' + user + ' as a result of a TML Training job.'  

@@ -57,12 +57,15 @@ class QNA(TSK):
                 return False
             self.updateJobStatus(job, 'analysing')
             if self.isDatasetPersistent(job, documentStore, self.index):
-                print('INFO: Documents for index already stored.', flush=True)
+                print('INFO: documents for index already stored.', flush=True)
             else:
-                print('INFO: Documents for index will be persisted...', flush=True)
+                print('INFO: documents for index will be persisted...', flush=True)
                 try:
+                    print('INFO:', 'will download data...', flush=True)
                     sampleCSV = self.downloadAndConvertCSV(job, job.data_sample)
+                    print('INFO:', 'will convert data...', flush=True)
                     sampleJSON = self.convertCSV2JSON4QnA(sampleCSV, job)
+                    print('INFO:', 'will store data...', flush=True)
                     documentStore.write_documents(sampleJSON)
                     del sampleCSV
                     del sampleJSON
@@ -70,10 +73,14 @@ class QNA(TSK):
                     print('ERROR: Check values for selectTargetTextColumn & selectTargetIdColumn.', e, flush=True)
                     self.updateJobStatus(job, 'cancelled')
                     return False
+            print('INFO:', 'will donwload and store model...', flush=True)
             self.downloadAndStoreZIPModel(job, job.model)
+            #tr = tracker.SummaryTracker()
+            print('INFO:', 'will set the retriever...', flush=True)
             retriever = self.setRetriever(documentStore) # noleak
-            tr = tracker.SummaryTracker()
+            print('INFO:', 'will set the reader...', flush=True)
             reader = self.setReader(job)
+            print('INFO:', 'will predict...', flush=True)
             result = self.setPrediction(reader, retriever, job)
             self.persistResult(job, result)
             self.updateJobStatus(job, 'completed')
@@ -84,7 +91,7 @@ class QNA(TSK):
             del reader
             del result
             del documentStore
-            tr.print_diff()
+            #tr.print_diff()
         elif job.task == 'train':
             start_time = time.time()
             pass
@@ -112,10 +119,8 @@ class QNA(TSK):
 
 
     def isDatasetPersistent(self, job, documentStore, index):
-        response = False
-        #bulk_deletes = []
-        es_query_body = self.buildFilter(job)
         '''
+        bulk_deletes = []
         results = scan(self.documentStore.client,
             query=es_query_body,  # same as the search() body parameter
             index='document',
@@ -123,12 +128,15 @@ class QNA(TSK):
             _source=False,
             track_scores=False,
             scroll='1s')
-        '''
-        '''
         for result in results:
             result['_op_type'] = 'delete'
             bulk_deletes.append(result)
+        if len(list(results)) > 0:
+            response = True
+        bulk(self.documentStore.client, bulk_deletes)
         '''
+        response = False
+        es_query_body = self.buildFilter(job)
         results = documentStore.client.search(index=index, body=es_query_body, doc_type='_doc', scroll = '1s')
         if self.useRemote:
             if results['hits']['total'] > 0:
@@ -136,11 +144,6 @@ class QNA(TSK):
         else: 
             if results['hits']['total']['value'] > 0:
                 response = True
-        '''
-        if len(list(results)) > 0:
-            response = True
-        bulk(self.documentStore.client, bulk_deletes)
-        '''
         return response
         
 
