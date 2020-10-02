@@ -1,5 +1,6 @@
 import os
 import fs
+import math
 import fs.copy
 import io
 import gc
@@ -9,6 +10,7 @@ import zipfile
 import py7zr
 import uuid
 import csv
+import json
 from pathlib import Path
 from shutil import rmtree
 from aihandler.ai_tsk import TSK
@@ -19,144 +21,160 @@ from haystack.reader.farm import FARMReader
 from haystack.reader.transformers import TransformersReader
 from haystack.utils import print_answers
 #from haystack.database.elasticsearch import ElasticsearchDocumentStore
+from aihandler.es_docstore import ElasticsearchDocumentStore as ElasticsearchDocumentStore
 from haystack.retriever.sparse import ElasticsearchRetriever
 from ssl import create_default_context
+from elasticsearch import Elasticsearch
+from elasticsearch.helpers import bulk, scan
+from pympler import tracker
 
-
-from aihandler.es_docstore import ElasticsearchDocumentStore
 
 class QNA(TSK):
+
 
     def __init__(self, db, s3, orcomm):
         TSK.__init__(self, db, s3, orcomm)
         self._taskKind = 'qna'
-        '''
-        es = Elasticsearch(hosts=[{"host": host, "port": port}], http_auth=(username, password),
-                                    scheme=scheme, ca_certs=ca_certs, verify_certs=verify_certs)
-        es = Elasticsearch(
-            ['elasticsearch:9200'],
-            # turn on SSL
-            use_ssl=True,
-            # make sure we verify SSL certificates
-            verify_certs=True,
-            # provide a path to CA certs on disk
-            ca_certs=os.environ['ELASTICSEARCH_CERT']
-        )
-        '''
-        #print(es, flush=True)
-        self.documentStore = self.connectElasticSearch()
-        
-        #self.injectSampleData(self.documentStore)
-        # init - self.retriever = self.setRetriever(self.documentStore)
-        # init - self.reader = self.setReader()
-        # self.setPrediction(reader, retriever)
-        
+        self.useRemote = True
+        self.index = None 
         self.startTimer()
 
 
     def execML(self, job):
         if job.task == 'analyse':
             start_time = time.time()
-            
-            sampleCSV = self.downloadAndConvertCSV(job, job.data_sample)
-            print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>', flush=True)
-            print('text' in sampleCSV.keys(), flush=True)
-            if 'text' not in sampleCSV.keys():
+            self.index = job.data_sample['id']
+            documentStore = self.connectElasticSearch(self.index, self.useRemote)
+            if self.useRemote:
+                if documentStore.client.indices.exists(index=self.index):
+                    print('INFO: Index already stored.', flush=True)
+                else:
+                    print('INFO: Index will be created...', flush=True)
+                    documentStore.client.indices.create(index = self.index)
+            if 'selectTargetTextColumn' not in job.task_params and 'selectTargetIdColumn' not in job.task_params:
+                print('ERROR: The keys selectTargetTextColumn & selectTargetIdColumn are missing.', flush=True)
+                self.updateJobStatus(job, 'cancelled')
                 return False
             self.updateJobStatus(job, 'analysing')
-            sampleJSON = self.convertCSV2JSON4QnA(sampleCSV, job)
-            self.documentStore.write_documents(sampleJSON)
+            if self.isDatasetPersistent(job, documentStore, self.index):
+                print('INFO: Documents for index already stored.', flush=True)
+            else:
+                print('INFO: Documents for index will be persisted...', flush=True)
+                try:
+                    sampleCSV = self.downloadAndConvertCSV(job, job.data_sample)
+                    sampleJSON = self.convertCSV2JSON4QnA(sampleCSV, job)
+                    documentStore.write_documents(sampleJSON)
+                    del sampleCSV
+                    del sampleJSON
+                except Exception as e:
+                    print('ERROR: Check values for selectTargetTextColumn & selectTargetIdColumn.', e, flush=True)
+                    self.updateJobStatus(job, 'cancelled')
+                    return False
             self.downloadAndStoreZIPModel(job, job.model)
-            retriever = self.setRetriever(self.documentStore)
+            retriever = self.setRetriever(documentStore) # noleak
+            tr = tracker.SummaryTracker()
             reader = self.setReader(job)
-            result = self.setPrediction(reader, retriever, job.task_params)
+            result = self.setPrediction(reader, retriever, job)
             self.persistResult(job, result)
             self.updateJobStatus(job, 'completed')
+            documentStore.client.transport.close()
             elapsed_time = time.time() - start_time
             print('Execution time max: ', elapsed_time, 'for job.id:', job.id,  flush=True)
+            del retriever
+            del reader
+            del result
+            del documentStore
+            tr.print_diff()
         elif job.task == 'train':
             start_time = time.time()
-            
+            pass
             elapsed_time = time.time() - start_time
             print('Execution time max: ', elapsed_time, 'for job.id:', job.id,  flush=True) 
         return True
 
 
+    def buildFilter(self, job):
+        es_query_body = {
+            "from": 0,
+            "size" : 10,
+            "query": {
+                "bool": {
+                    "should": []
+                }
+            }
+        }
+        mappings = json.loads(os.environ['DEFAULT_SAMPLES_MAPPINGS'])
+        for m in mappings:
+            for key in list(m.keys()):
+                if m[key] == job.data_sample['id']:
+                    es_query_body['query']['bool']['should'].append({ "match": { "external_source_id": m[key] } })
+        return es_query_body
+
+
+    def isDatasetPersistent(self, job, documentStore, index):
+        response = False
+        #bulk_deletes = []
+        es_query_body = self.buildFilter(job)
+        '''
+        results = scan(self.documentStore.client,
+            query=es_query_body,  # same as the search() body parameter
+            index='document',
+            doc_type='_doc',
+            _source=False,
+            track_scores=False,
+            scroll='1s')
+        '''
+        '''
+        for result in results:
+            result['_op_type'] = 'delete'
+            bulk_deletes.append(result)
+        '''
+        results = documentStore.client.search(index=index, body=es_query_body, doc_type='_doc', scroll = '1s')
+        if self.useRemote:
+            if results['hits']['total'] > 0:
+                response = True
+        else: 
+            if results['hits']['total']['value'] > 0:
+                response = True
+        '''
+        if len(list(results)) > 0:
+            response = True
+        bulk(self.documentStore.client, bulk_deletes)
+        '''
+        return response
+        
+
     def convertCSV2JSON4QnA(self, sampleCSV, job):
         sampleJSON = []
         for index, row in sampleCSV.iterrows():
+            self.printProgressBar(index, len(sampleCSV.index), prefix = 'Progress:', suffix = 'Complete', length = 50)
             obj = {
-                'text': row['text'],
+                'text': row[job.task_params['selectTargetTextColumn']],
+                'external_source_id': job.data_sample['id'],
                 'meta': {
                     'dataset_id': job.data_sample['id'],
-                    'user_id': job.user 
+                    'user_id': job.user,
+                    'document_id': row[job.task_params['selectTargetIdColumn']],
                 }
             }
-            for k in iter(sampleCSV.keys()):
-                if k != 'text':
-                    obj['meta'][k] = row[k]
+            if isinstance(obj['text'], str) == False:
+                obj['text'] = 'undefined'
             sampleJSON.append(obj)
         return sampleJSON
 
-    def connectElasticSearch(self):
-        #return ElasticsearchDocumentStore(host='elasticsearch', username='', password='', index='document')
-        context = create_default_context(cafile="tmp/cert.pem")
-        return ElasticsearchDocumentStore(host=os.environ['ELASTICSEARCH_HOST'], 
-            port=os.environ['ELASTICSEARCH_PORT'],
-            scheme="https",
-            #ca_certs=os.environ['ELASTICSEARCH_CERT'],
-            #verify_certs=True,
-            username=os.environ['ELASTICSEARCH_USERNAME'], 
-            password=os.environ['ELASTICSEARCH_PASSWORD'], 
-            index='document',
-            ssl_context=context)
-        
 
-
-    def injectSampleData(self, documentStore):
-
-        # INTEGRATION
-        # Just produce a document inside of elastic search with a compatible id and populate it. In the end it will be the same as if you have in s3.
-        # Let's first get some documents that we want to query
-        # Here: 517 Wikipedia articles for Game of Thrones
-        doc_dir = 'data/article_txt_got'
-        s3_url = 'https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-qa/datasets/documents/wiki_gameofthrones_txt.zip'
-        fetch_archive_from_http(url=s3_url, output_dir=doc_dir)
-        # Convert files to dicts
-        # You can optionally supply a cleaning function that is applied to each doc (e.g. to remove footers)
-        # It must take a str as input, and return a str.
-        
-        dicts = convert_files_to_dicts(dir_path=doc_dir, clean_func=clean_wiki_text, split_paragraphs=True)
-        
-        # We now have a list of dictionaries that we can write to our document store.
-        # If your texts come from a different source (e.g. a DB), you can of course skip convert_files_to_dicts() and create the dictionaries yourself.
-        # The default format here is: {"name": "<some-document-name>, "text": "<the-actual-text>"}
-        # (Optionally: you can also add more key-value-pairs here, that will be indexed as fields in Elasticsearch and
-        # can be accessed later for filtering or shown in the responses of the Finder)
-
-        # Let's have a look at the first 3 entries:
-        
-        #print(type(dicts))
-        for d in dicts:
-            d['meta']['external_source_id'] = str(uuid.uuid4())
-            #d['source'] = d['meta']['name']
-            #del d['meta']
-        
-        print(dicts[:3])
-        '''
-        for d in dicts:
-            d['id'] = str(uuid.uuid4())
-            d['source'] = d['meta']['name']
-            del d['meta']
-        keys = dicts[0].keys()
-        
-        with open('tmp/GameOfThrones.csv', 'w', encoding='utf8')  as output_file:
-            dict_writer = csv.DictWriter(output_file, keys)
-            dict_writer.writeheader()
-            dict_writer.writerows(dicts)
-        '''
-        # Now, let's write the dicts containing documents to our DB.
-        documentStore.write_documents(dicts)
+    def connectElasticSearch(self, index, useRemote):
+        if useRemote:
+            context = create_default_context(cafile=os.environ['ELASTICSEARCH_PATHPEM'])
+            return ElasticsearchDocumentStore(host=os.environ['ELASTICSEARCH_HOST'], 
+                port=os.environ['ELASTICSEARCH_PORT'],
+                scheme="https",
+                username=os.environ['ELASTICSEARCH_USERNAME'], 
+                password=os.environ['ELASTICSEARCH_PASSWORD'], 
+                index=index,
+                ssl_context=context)
+        else:
+            return ElasticsearchDocumentStore(host='elasticsearch', username='', password='', index=index)
 
 
     def setRetriever(self, documentStore):
@@ -164,26 +182,44 @@ class QNA(TSK):
 
 
     def setReader(self, job):
-        reader = None
-        reader = FARMReader(model_name_or_path='tmp/' + job.id, use_gpu=False)
-        return reader
+        return FARMReader(model_name_or_path='tmp/' + job.model['id'], use_gpu=False)
 
 
-    def setPrediction(self, reader, retriever, params):
+    def setPrediction(self, reader, retriever, job):
         finder = Finder(reader, retriever)
-        if 'top_k_retriever' not in params:
-            params['top_k_retriever'] = 10
-        if 'top_k_reader' not in params:
-            params['top_k_reader'] = 5
+        if 'top_k_retriever' not in job.task_params:
+            job.task_params['top_k_retriever'] = 10
+        if 'top_k_reader' not in job.task_params:
+            job.task_params['top_k_reader'] = 5
         results = []
-        for question in params['questions']:
-            prediction = finder.get_answers(question=question, top_k_retriever=params['top_k_retriever'], top_k_reader=params['top_k_reader'])
+        es_query_body = self.buildFilter(job)
+        del es_query_body['from']
+        del es_query_body['size']
+        es_query_body = { 'external_source_id': ['ea13ebc0-18bf-4dfe-8750-61641fdbb00b'] } 
+        for question in job.task_params['questions']:
+            prediction = finder.get_answers(question=question, top_k_retriever=job.task_params['top_k_retriever'], top_k_reader=job.task_params['top_k_reader'], filters=None) #es_query_body['query']['bool']
             results.append(prediction)
+        print('INFO:', results, flush=True)
         return results
 
-        # You can configure how many candidates the reader and retriever shall return
-        # The higher top_k_retriever, the better (but also the slower) your answers. 
-        # prediction = finder.get_answers(question="Who is the father of Arya Stark?", top_k_retriever=10, top_k_reader=5)
-        # prediction = finder.get_answers(question="Who created the Dothraki vocabulary?", top_k_reader=5)
-        # prediction = finder.get_answers(question="Who is the sister of Sansa?", top_k_reader=5)
-        #print_answers(prediction, details="minimal")
+
+    def printProgressBar (self, iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█', printEnd = "\r"):
+        """
+        Call in a loop to create terminal progress bar
+        @params:
+            iteration   - Required  : current iteration (Int)
+            total       - Required  : total iterations (Int)
+            prefix      - Optional  : prefix string (Str)
+            suffix      - Optional  : suffix string (Str)
+            decimals    - Optional  : positive number of decimals in percent complete (Int)
+            length      - Optional  : character length of bar (Int)
+            fill        - Optional  : bar fill character (Str)
+            printEnd    - Optional  : end character (e.g. "\r", "\r\n") (Str)
+        """
+        percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
+        filledLength = int(length * iteration // total)
+        bar = fill * filledLength + '-' * (length - filledLength)
+        print(f'\r{prefix} |{bar}| {percent}% {suffix}', end = printEnd)
+        # Print New Line on Complete
+        if iteration == total: 
+            print()

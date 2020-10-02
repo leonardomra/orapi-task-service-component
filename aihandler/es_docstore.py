@@ -131,6 +131,7 @@ class ElasticsearchDocumentStore(BaseDocumentStore):
         for doc in documents:
             _doc = {
                 #"_op_type": "create",
+                #"_op_type": "index",
                 "_op_type": "index",
                 "_index": self.index,
                 "_type": "_doc",

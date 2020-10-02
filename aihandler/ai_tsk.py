@@ -16,6 +16,7 @@ from task_module.models.job import Job
 from task_module.models.datacomplex import DataComplex
 from orcomm_module.orevent import OREvent
 
+
 class TSK:
 
     def __init__(self, db, s3, orcomm):
@@ -29,7 +30,7 @@ class TSK:
 
 
     def startTimer(self):
-        print('>', 'Start listening for tasks...', self._taskKind, flush=True)
+        print('>>>', 'INFO:', 'start listening for tasks:', self._taskKind, '...', flush=True)
         while True:
             gc.collect()
             time.sleep(2)
@@ -37,8 +38,9 @@ class TSK:
 
 
     def getTask(self):  # noqa: E501
+        print('INFO:', 'listening:', self._taskKind, '...', flush=True)
         if self.taskIsActive == True:
-            print('executing task...' + self._taskKind, flush=True)
+            print('INFO:', 'will execute task:', self._taskKind, '...', flush=True)
         else:
             if os.environ['TASK'] == 'train-' + self._taskKind:
                 items = self.orcomm.itemsForQueue(os.environ['TRAIN_SQS_QUEUE_NAME'], os.environ['TRAIN_SQS_QUEUE_ARN'], ['jobId', 'jobStatus', 'jobTask', 'jobKind', 'order'], 1, False)
@@ -50,26 +52,22 @@ class TSK:
             else:
                 item = items[0]
                 if item.MessageAttributes['jobKind']['StringValue'] != self._taskKind:
-                    return
-                
-                print('Will start', os.environ['TASK'], 'task...', flush=True)
-
+                    return None
                 self.taskIsActive = True
                 task = self.postTask(job=item.MessageAttributes['jobId']['StringValue'], queueItem=item)
-
                 if task['status']:
-                    print('Task succeeded!', flush=True)
+                    print('INFO:', 'task succeeded!', flush=True)
                 else:
-                    print('Task failed.', flush=True)
+                    print('INFO:', 'task failed.', flush=True)
                 try:
-                    print(self.sendEventForFinishedJob(task['job']), flush=True)
+                    print(self.sendEventForFinishedJob(task['job']), flush=True) # SEND MESSAGE AS WELL - do not send message to the user if the task was already executed, please!
                 except Exception as e:
-                    print(e, flush=True)
+                    print('ERROR:', e, flush=True)
                 try:
                     self.orcomm.getQueue(os.environ['PREDICT_SQS_QUEUE_ARN']).deleteItem(item.QueueUrl, item.ReceiptHandle)
                 except Exception as e:
-                    print(e, flush=True)
-                
+                    print('ERROR:' ,e, flush=True)
+
 
     def postTask(self, job=None, queueItem=None):  # noqa: E501
         jobQuery = ("SELECT id, label, description, kind, status, model, dataSource, dataSample, output, task, taskParams, user FROM Job WHERE id = %s")
@@ -129,7 +127,8 @@ class TSK:
 
     def execML(self, job): 
         return True
-    
+
+
     def sendEventForFinishedJob(self, job):
         # create event
         jobDict = job.__dict__.copy()
@@ -141,6 +140,7 @@ class TSK:
         event.Message = json.dumps(jobDict)
         response = self.orcomm.getTopic(os.environ['JOBS_ARN_TOPIC']).broadcastEvent(event)
         return response
+
 
     def populateDataComplex(self, job, target, dataQuery, errorMsg):
         paramsData = (target,)
@@ -215,9 +215,22 @@ class TSK:
         fileData.seek(0)
         with open('tmp/' + self._taskKind + '-model.sav', 'wb') as f:
             shutil.copyfileobj(fileData, f)
+        del fileData
         return True
 
+
     def downloadAndStoreZIPModel(self, job, target):
+        modelIsPresent = False
+        mappings = json.loads(os.environ['DEFAULT_MODEL_MAPPINGS'])
+        for d in os.scandir('./tmp'):
+            print(d.name, flush=True)
+        for m in mappings:
+            for key in list(m.keys()):
+                for d in os.scandir('./tmp'):
+                    if m[key] == d.name:
+                        modelIsPresent = True
+        if modelIsPresent:
+            return True
         locationSplit = target['location'].split('/')
         bucketName = locationSplit[0]
         key = locationSplit[1] + '/' + locationSplit[2]
@@ -225,27 +238,30 @@ class TSK:
         if not fileData:
             return self.cancellation(job, 'Problem downloading object from S3.')
         fileData.seek(0)
-        Path('tmp/' + job.id).mkdir(parents=True, exist_ok=True)
+        Path('tmp/' + job.model['id']).mkdir(parents=True, exist_ok=True)
         zf = zipfile.ZipFile(fileData, 'r')
         for name in zf.namelist():
             print(name, flush=True)
-            with open('tmp/' + job.id + '/' + name, 'wb') as f:
+            with open('tmp/' + job.model['id'] + '/' + name, 'wb') as f:
                 f.write(zf.read(name))
+        del fileData
+        del zf
         return True
+
 
     def updateJobStatus(self, job, status):
         updateJobQuery = ("UPDATE Job SET status = %s WHERE id = %s")
         paramsStart = (status, job.id)
         self.db.update(updateJobQuery, paramsStart)
 
-    
+
     def cancellation(self, job, message):
         print('ERROR:', message , flush=True)
         self.updateJobStatus(job, 'cancelled')
         self.taskIsActive = False
         return False
 
-    
+
     def persistModel(self, vectorsBin, job):
         locationSplit = job.data_source['location'].split('/')
         bucketName = locationSplit[0]
@@ -265,3 +281,4 @@ class TSK:
                     "VALUES (%s, %s, %s, %s, %s, %s)")
             data_dataset = (dataset.id, dataset.file_name, dataset.format, dataset.kind, dataset.label, dataset.location)
             self.db.add(add_dataset, data_dataset)
+        del vectorsBin
