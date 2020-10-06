@@ -15,9 +15,13 @@ class MySQLHandler():
         self.cursor = None
 
     def dbconnect(self):   
+        _cnx = None
+        _cursor = None
         try:
-            self.cnx = mysql.connector.connect(**self.config)
-            self.cursor = self.cnx.cursor()
+            #self.cnx = mysql.connector.connect(**self.config)
+            #self.cursor = self.cnx.cursor()
+            _cnx = mysql.connector.connect(**self.config)
+            _cursor = _cnx.cursor()
         except mysql.connector.Error as err:
             if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
                 print("Something is wrong with your user name or password")
@@ -27,46 +31,48 @@ class MySQLHandler():
                 print(err)
         else:
             print('DB Connected!')
+        return { 'cnx': _cnx, 'cursor': _cursor }
 
-    def dbCloseConnection(self):
-        self.cursor.close()
-        self.cnx.close()
+    def dbCloseConnection(self, db):
+        db['cursor'].close()
+        db['cnx'].close()
 
     def info(self):
-        self.dbconnect()
-        self.dbCloseConnection()
+        db = self.dbconnect()
+        self.dbCloseConnection(db)
         print(self.config)
 
-    def add(self, schema, data):
-        self.dbconnect()
-        self.cursor.execute(schema, data)
-        self.cnx.commit()
-        self.dbCloseConnection()
+    def add(self, query, params=None):
+        db = self.dbconnect()
+        db['cursor'].execute(query, params)
+        db['cnx'].commit()
+        self.dbCloseConnection(db)
 
     def get(self, query, params=None):
-        self.dbconnect()
-        self.cursor.execute(query, params)
-        records = self.cursor.fetchall()
-        self.dbCloseConnection()
+        db = self.dbconnect()
+        db['cursor'].execute(query, params)
+        records = db['cursor'].fetchall()
+        self.dbCloseConnection(db)
         return records
 
     def update(self, query, params=None):
-        self.dbconnect()
-        self.cursor.execute(query, params)
-        self.cnx.commit()
-        self.dbCloseConnection()
+        db = self.dbconnect()
+        db['cursor'].execute(query, params)
+        db['cnx'].commit()
+        self.dbCloseConnection(db)
 
     def delete(self, table, id, user):
         query = "DELETE FROM " + table + " WHERE id=%s and user=%s"
         params = (id, user)
         response = False
+        db = None
         try:
-            self.dbconnect()
-            self.cursor.execute(query, params)
-            self.cnx.commit()
+            db = self.dbconnect()
+            db['cursor'].execute(query, params)
+            db['cnx'].commit()
             response = True
         except Error as error:
             print(error, flush=True)
         finally:
-            self.dbCloseConnection()
+            self.dbCloseConnection(db)
         return response

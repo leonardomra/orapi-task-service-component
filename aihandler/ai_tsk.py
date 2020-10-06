@@ -44,9 +44,17 @@ class TSK:
             print('INFO:', 'will execute task:', self._taskKind, '...', flush=True)
         else:
             if os.environ['TASK'] == 'train-' + self._taskKind:
-                items = self.orcomm.itemsForQueue(os.environ['TRAIN_SQS_QUEUE_NAME'], os.environ['TRAIN_SQS_QUEUE_ARN'], ['jobId', 'jobStatus', 'jobTask', 'jobKind', 'order'], 1, False)
+                if self._taskKind == 'tml':
+                    items = self.orcomm.itemsForQueue(os.environ['TRAIN_SQS_QUEUE_NAME_TML'], os.environ['TRAIN_SQS_QUEUE_ARN_TML'], ['jobId', 'jobStatus', 'jobTask', 'jobKind', 'order'], 1, False)
+                elif self._taskKind == 'qna':  
+                    items = self.orcomm.itemsForQueue(os.environ['TRAIN_SQS_QUEUE_NAME_QNA'], os.environ['TRAIN_SQS_QUEUE_ARN_QNA'], ['jobId', 'jobStatus', 'jobTask', 'jobKind', 'order'], 1, False)
+                #items = self.orcomm.itemsForQueue(os.environ['TRAIN_SQS_QUEUE_NAME'], os.environ['TRAIN_SQS_QUEUE_ARN'], ['jobId', 'jobStatus', 'jobTask', 'jobKind', 'order'], 1, False)
             elif os.environ['TASK'] == 'analyse-' + self._taskKind:
-                items = self.orcomm.itemsForQueue(os.environ['PREDICT_SQS_QUEUE_NAME'], os.environ['PREDICT_SQS_QUEUE_ARN'], ['jobId', 'jobStatus', 'jobTask', 'jobKind', 'order'], 1, False)  
+                if self._taskKind == 'tml':
+                    items = self.orcomm.itemsForQueue(os.environ['PREDICT_SQS_QUEUE_NAME_TML'], os.environ['PREDICT_SQS_QUEUE_ARN_TML'], ['jobId', 'jobStatus', 'jobTask', 'jobKind', 'order'], 1, False)
+                elif self._taskKind == 'qna':
+                    items = self.orcomm.itemsForQueue(os.environ['PREDICT_SQS_QUEUE_NAME_QNA'], os.environ['PREDICT_SQS_QUEUE_ARN_QNA'], ['jobId', 'jobStatus', 'jobTask', 'jobKind', 'order'], 1, False)
+                #items = self.orcomm.itemsForQueue(os.environ['PREDICT_SQS_QUEUE_NAME'], os.environ['PREDICT_SQS_QUEUE_ARN'], ['jobId', 'jobStatus', 'jobTask', 'jobKind', 'order'], 1, False)  
             if not items:
                 #print('Waiting for', os.environ['TASK'], 'task...', flush=True)
                 pass
@@ -65,7 +73,17 @@ class TSK:
                 except Exception as e:
                     print('ERROR getTask0:', e, flush=True)
                 try:
-                    self.orcomm.getQueue(os.environ['PREDICT_SQS_QUEUE_ARN']).deleteItem(item.QueueUrl, item.ReceiptHandle)
+                    if os.environ['TASK'] == 'train-' + self._taskKind:
+                        if self._taskKind == 'tml':
+                            self.orcomm.getQueue(os.environ['TRAIN_SQS_QUEUE_ARN_TML']).deleteItem(item.QueueUrl, item.ReceiptHandle)
+                        elif self._taskKind == 'qna':
+                            self.orcomm.getQueue(os.environ['TRAIN_SQS_QUEUE_ARN_QNA']).deleteItem(item.QueueUrl, item.ReceiptHandle)
+                    elif os.environ['TASK'] == 'analyse-' + self._taskKind:
+                        if self._taskKind == 'tml':
+                            self.orcomm.getQueue(os.environ['PREDICT_SQS_QUEUE_ARN_TML']).deleteItem(item.QueueUrl, item.ReceiptHandle)
+                        elif self._taskKind == 'qna':
+                            self.orcomm.getQueue(os.environ['PREDICT_SQS_QUEUE_ARN_QNA']).deleteItem(item.QueueUrl, item.ReceiptHandle)
+                    #self.orcomm.getQueue(os.environ['PREDICT_SQS_QUEUE_ARN']).deleteItem(item.QueueUrl, item.ReceiptHandle)
                 except Exception as e:
                     print('ERROR getTask1:', e, flush=True)
 
