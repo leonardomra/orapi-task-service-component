@@ -94,7 +94,23 @@ class QNA(TSK):
             #tr.print_diff()
         elif job.task == 'train':
             start_time = time.time()
-            pass
+
+            #'''
+            print('INFO:', 'will donwload and store model...', flush=True)
+            self.downloadAndStoreDataset(job, job.data_source)
+            print('INFO:', 'will donwload and store model...', flush=True)
+            self.downloadAndStoreZIPModel(job, job.model)
+            print('INFO:', 'will set the reader...', flush=True)
+            reader = self.setReader(job)
+
+            newModelId = str(uuid.uuid4())
+            reader.train(data_dir='tmp/' + job.data_source['id'], train_filename=job.data_source['fileName'], use_gpu=False, n_epochs=1, save_dir='tmp/' + newModelId)
+            #'''
+            
+            self.persistQNAModel(newModelId, job)
+            self.updateJobStatus(job, 'completed')
+
+
             elapsed_time = time.time() - start_time
             print('Execution time max: ', elapsed_time, 'for job.id:', job.id,  flush=True) 
         #return True
@@ -186,7 +202,12 @@ class QNA(TSK):
 
 
     def setReader(self, job):
-        return FARMReader(model_name_or_path='tmp/' + job.model['id'], use_gpu=False)
+        print(type(job.model), flush=True)
+        if type(job.model) is dict:
+            return FARMReader(model_name_or_path='tmp/' + job.model['id'], use_gpu=False)
+        else:
+            return FARMReader(model_name_or_path='tmp/' + job.model, use_gpu=False)
+        
 
 
     def setPrediction(self, reader, retriever, job):

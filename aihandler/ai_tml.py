@@ -48,7 +48,7 @@ class TML(TSK):
                 #return self.cancellation(job, e)
                 return {'status': self.cancellation(job, e), 'code': 'error', 'msg': e } 
             print('will upload model...', flush=True)
-            self.persistModel(vectorsBin, job)
+            self.persistTMLModel(vectorsBin, job)
             self.updateJobStatus(job, 'completed')
             elapsed_time = time.time() - start_time
             print('Execution time max: ', elapsed_time, 'for job.id:', job.id,  flush=True)

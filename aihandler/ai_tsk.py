@@ -195,7 +195,6 @@ class TSK:
         bucketName = locationSplit[0]
         user = locationSplit[1]
         s3Resp = self.s3.uploadFileObject(inMemoryFile, bucketName, user + '/' + job.id + '_' + self._taskKind + '-result.json')
-        print(s3Resp, flush=True)
         if s3Resp:
             dataset = DataComplex()
             dataset.id = str(uuid.uuid4())
@@ -244,6 +243,21 @@ class TSK:
         return True
 
 
+    def downloadAndStoreDataset(self, job, target):
+        locationSplit = target['location'].split('/')
+        bucketName = locationSplit[0]
+        key = locationSplit[1] + '/' + locationSplit[2]
+        fileData = self.s3.downloadFile(bucketName, key)
+        if not fileData:
+            return self.cancellation(job, 'Problem downloading object from S3.')
+        fileData.seek(0)
+        Path('tmp/' + target['id']).mkdir(parents=True, exist_ok=True)
+        with open('tmp/' + target['id'] + '/' + target['fileName'], 'wb') as f:
+            shutil.copyfileobj(fileData, f)
+        del fileData
+        return True
+
+
     def downloadAndStoreZIPModel(self, job, target):
         modelIsPresent = False
         mappings = json.loads(os.environ['DEFAULT_MODEL_MAPPINGS'])
@@ -284,7 +298,7 @@ class TSK:
         return False
 
 
-    def persistModel(self, vectorsBin, job):
+    def persistTMLModel(self, vectorsBin, job):
         locationSplit = job.data_source['location'].split('/')
         bucketName = locationSplit[0]
         user = locationSplit[1]
@@ -303,4 +317,41 @@ class TSK:
                     "VALUES (%s, %s, %s, %s, %s, %s)")
             data_dataset = (dataset.id, dataset.file_name, dataset.format, dataset.kind, dataset.label, dataset.location)
             self.db.add(add_dataset, data_dataset)
+            updateJobQuery = ("UPDATE Job SET output = %s WHERE id = %s")
+            paramsStart = (dataset.id, job.id)
+            self.db.update(updateJobQuery, paramsStart)
         del vectorsBin
+
+
+    def persistQNAModel(self, newModelId, job):
+        path = 'tmp/' + newModelId
+        inMemoryFile = io.BytesIO()
+        zf = zipfile.ZipFile(inMemoryFile, 'w', zipfile.ZIP_DEFLATED)
+        for root, dirs, files in os.walk(path):
+            for _file in files:
+                zf.write(os.path.join(root, _file), _file)
+        zf.close()
+        inMemoryFile.seek(0)
+        locationSplit = job.data_source['location'].split('/')
+        bucketName = locationSplit[0]
+        user = locationSplit[1]
+        s3FileName = job.id + '_' + newModelId + '_' + self._taskKind + '-model.zip'
+        s3Resp = self.s3.uploadFileObject(inMemoryFile.getvalue(), bucketName, user + '/' + s3FileName)
+        if s3Resp:
+            dataset = DataComplex()
+            dataset.id = newModelId
+            dataset.file_name = s3FileName
+            dataset.location = bucketName + '/' + user + '/' + s3FileName
+            dataset.kind = 'model'
+            dataset.format = 'application/zip'
+            dataset.label = 'Model created for user ' + user + ' as a result of a QNA Training job.'  
+            # store persistent data
+            add_dataset = ("INSERT INTO Data "
+                    "(id, fileName, format, kind, label, location) "
+                    "VALUES (%s, %s, %s, %s, %s, %s)")
+            data_dataset = (dataset.id, dataset.file_name, dataset.format, dataset.kind, dataset.label, dataset.location)
+            self.db.add(add_dataset, data_dataset)
+            updateJobQuery = ("UPDATE Job SET output = %s WHERE id = %s")
+            paramsStart = (dataset.id, job.id)
+            self.db.update(updateJobQuery, paramsStart)
+        del inMemoryFile

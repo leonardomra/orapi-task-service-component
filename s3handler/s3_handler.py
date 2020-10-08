@@ -69,8 +69,8 @@ class S3Handler():
             else:
                 return False
 
-    def uploadFileObject(self, data, bucket_name, filename):
-        useResource = True
+    def uploadFileObject(self, data, bucket_name, filename, useResource = True):
+        #useResource = True
         response = None
         if useResource:
             try:
