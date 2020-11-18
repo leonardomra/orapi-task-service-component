@@ -43,17 +43,22 @@ class TSK:
         if self.taskIsActive == True:
             print('INFO:', 'will execute task:', self._taskKind, '...', flush=True)
         else:
+            items = None
             if os.environ['TASK'] == 'train-' + self._taskKind:
                 if self._taskKind == 'tml':
                     items = self.orcomm.itemsForQueue(os.environ['TRAIN_SQS_QUEUE_NAME_TML'], os.environ['TRAIN_SQS_QUEUE_ARN_TML'], ['jobId', 'jobStatus', 'jobTask', 'jobKind', 'order'], 1, False)
                 elif self._taskKind == 'qna':  
                     items = self.orcomm.itemsForQueue(os.environ['TRAIN_SQS_QUEUE_NAME_QNA'], os.environ['TRAIN_SQS_QUEUE_ARN_QNA'], ['jobId', 'jobStatus', 'jobTask', 'jobKind', 'order'], 1, False)
+                elif self._taskKind == 'ner':
+                    items = self.orcomm.itemsForQueue(os.environ['TRAIN_SQS_QUEUE_NAME_NER'], os.environ['TRAIN_SQS_QUEUE_ARN_NER'], ['jobId', 'jobStatus', 'jobTask', 'jobKind', 'order'], 1, False)
                 #items = self.orcomm.itemsForQueue(os.environ['TRAIN_SQS_QUEUE_NAME'], os.environ['TRAIN_SQS_QUEUE_ARN'], ['jobId', 'jobStatus', 'jobTask', 'jobKind', 'order'], 1, False)
             elif os.environ['TASK'] == 'analyse-' + self._taskKind:
                 if self._taskKind == 'tml':
                     items = self.orcomm.itemsForQueue(os.environ['PREDICT_SQS_QUEUE_NAME_TML'], os.environ['PREDICT_SQS_QUEUE_ARN_TML'], ['jobId', 'jobStatus', 'jobTask', 'jobKind', 'order'], 1, False)
                 elif self._taskKind == 'qna':
                     items = self.orcomm.itemsForQueue(os.environ['PREDICT_SQS_QUEUE_NAME_QNA'], os.environ['PREDICT_SQS_QUEUE_ARN_QNA'], ['jobId', 'jobStatus', 'jobTask', 'jobKind', 'order'], 1, False)
+                elif self._taskKind == 'ner':
+                    items = self.orcomm.itemsForQueue(os.environ['PREDICT_SQS_QUEUE_NAME_NER'], os.environ['PREDICT_SQS_QUEUE_ARN_NER'], ['jobId', 'jobStatus', 'jobTask', 'jobKind', 'order'], 1, False)
                 #items = self.orcomm.itemsForQueue(os.environ['PREDICT_SQS_QUEUE_NAME'], os.environ['PREDICT_SQS_QUEUE_ARN'], ['jobId', 'jobStatus', 'jobTask', 'jobKind', 'order'], 1, False)  
             if not items:
                 #print('Waiting for', os.environ['TASK'], 'task...', flush=True)
@@ -78,11 +83,15 @@ class TSK:
                             self.orcomm.getQueue(os.environ['TRAIN_SQS_QUEUE_ARN_TML']).deleteItem(item.QueueUrl, item.ReceiptHandle)
                         elif self._taskKind == 'qna':
                             self.orcomm.getQueue(os.environ['TRAIN_SQS_QUEUE_ARN_QNA']).deleteItem(item.QueueUrl, item.ReceiptHandle)
+                        elif self._taskKind == 'ner':
+                            self.orcomm.getQueue(os.environ['TRAIN_SQS_QUEUE_ARN_NER']).deleteItem(item.QueueUrl, item.ReceiptHandle)
                     elif os.environ['TASK'] == 'analyse-' + self._taskKind:
                         if self._taskKind == 'tml':
                             self.orcomm.getQueue(os.environ['PREDICT_SQS_QUEUE_ARN_TML']).deleteItem(item.QueueUrl, item.ReceiptHandle)
                         elif self._taskKind == 'qna':
                             self.orcomm.getQueue(os.environ['PREDICT_SQS_QUEUE_ARN_QNA']).deleteItem(item.QueueUrl, item.ReceiptHandle)
+                        elif self._taskKind == 'ner':
+                            self.orcomm.getQueue(os.environ['PREDICT_SQS_QUEUE_ARN_NER']).deleteItem(item.QueueUrl, item.ReceiptHandle)
                     #self.orcomm.getQueue(os.environ['PREDICT_SQS_QUEUE_ARN']).deleteItem(item.QueueUrl, item.ReceiptHandle)
                 except Exception as e:
                     print('ERROR getTask1:', e, flush=True)
@@ -117,19 +126,29 @@ class TSK:
             return {'status': False, 'job': job, 'message': 'Task already executed.', 'code': 'executed' }
         dataQuery = ("SELECT id, fileName, format, kind, label, location FROM Data WHERE id = %s")
         if job.task == 'train':
+            # load dataSource
             dataSource = self.populateDataComplex(job, job.data_source, dataQuery, 'Data source is invalid.')
             if not dataSource:
                 self.taskIsActive = False
                 return {'status': False, 'job': job, 'message': 'Data source is invalid.', 'code': 'error' }
             else:
                 job.data_source = dataSource
+            # load model
+            model = self.populateDataComplex(job, job.model, dataQuery, 'Model is invalid.')
+            if not model and job.kind == 'ner':
+                self.taskIsActive = False
+                return {'status': False, 'job': job, 'message': 'Model is invalid.' }
+            else:
+                job.model = model
         else:
+            # load dataSample
             dataSample = self.populateDataComplex(job, job.data_sample, dataQuery, 'Data sample is invalid.')
             if not dataSample and job.kind == 'tml':
                 self.taskIsActive = False
                 return {'status': False, 'job': job, 'message': 'Data sample is invalid.' }
             else:
                 job.data_sample = dataSample
+            # load model
             model = self.populateDataComplex(job, job.model, dataQuery, 'Model is invalid.')
             if not model and job.kind == 'tml':
                 self.taskIsActive = False
@@ -192,6 +211,8 @@ class TSK:
             locationSplit = job.model['location'].split('/')
         elif job.kind == 'qna':
             locationSplit = ['openresearch', job.user]
+        elif job.kind == 'ner':
+            locationSplit = ['openresearch', job.user]
         bucketName = locationSplit[0]
         user = locationSplit[1]
         s3Resp = self.s3.uploadFileObject(inMemoryFile, bucketName, user + '/' + job.id + '_' + self._taskKind + '-result.json')
@@ -228,6 +249,19 @@ class TSK:
             return self.cancellation(job, e)
         return csvData
     
+    def downloadAndConvertText(self, job, target):
+        textData = None
+        locationSplit = target['location'].split('/')
+        bucketName = locationSplit[0]
+        key = locationSplit[1] + '/' + locationSplit[2]
+        fileData = self.s3.downloadFile(bucketName, key)
+        if not fileData:
+            return self.cancellation(job, 'Problem downloading object from S3.')
+        try:
+            textData = fileData.read()
+        except Exception as e:
+            return self.cancellation(job, e)
+        return textData.decode('utf-8')
 
     def downloadAndStoreTMLModel(self, job, target):
         locationSplit = target['location'].split('/')
@@ -243,18 +277,37 @@ class TSK:
         return True
 
 
+    def downloadAndStoreZIPDataset(self, job, target):
+        dataIsPresent = False
+        mappings = json.loads(os.environ['DEFAULT_DATASET_MAPPINGS'])
+        for m in mappings:
+            for key in list(m.keys()):
+                for d in os.scandir('./tmp'):
+                    if m[key] == d.name:
+                        dataIsPresent = True
+        if dataIsPresent:
+            return True
+        Path('tmp/' + target['id']).mkdir(parents=True, exist_ok=True)
+        zf = zipfile.ZipFile(self.downloadFile(job, target), 'r')
+        for name in zf.namelist():
+            print(name)
+            with open('tmp/' + target['id'] + '/' + name, mode='wb') as f:
+                f.write(zf.read(name))
+            # German case
+            contents = None
+            with io.open('tmp/' + target['id'] + '/' + name, mode='r+', encoding='latin-1') as f:
+                contents = f.readlines()
+            with io.open('tmp/' + target['id'] + '/' + name, mode='w', encoding='utf-8') as f:
+                for content in contents:
+                    f.write(content.encode('latin-1').decode('latin-1').encode('utf-8').decode('utf-8'))
+        del zf
+        return True
+
+
     def downloadAndStoreDataset(self, job, target):
-        locationSplit = target['location'].split('/')
-        bucketName = locationSplit[0]
-        key = locationSplit[1] + '/' + locationSplit[2]
-        fileData = self.s3.downloadFile(bucketName, key)
-        if not fileData:
-            return self.cancellation(job, 'Problem downloading object from S3.')
-        fileData.seek(0)
         Path('tmp/' + target['id']).mkdir(parents=True, exist_ok=True)
         with open('tmp/' + target['id'] + '/' + target['fileName'], 'wb') as f:
-            shutil.copyfileobj(fileData, f)
-        del fileData
+            shutil.copyfileobj(self.downloadFile(job, target), f)
         return True
 
 
@@ -268,6 +321,16 @@ class TSK:
                         modelIsPresent = True
         if modelIsPresent:
             return True
+        Path('tmp/' + job.model['id']).mkdir(parents=True, exist_ok=True)
+        zf = zipfile.ZipFile(self.downloadFile(job, target), 'r')
+        for name in zf.namelist():
+            with open('tmp/' + job.model['id'] + '/' + name, 'wb') as f:
+                f.write(zf.read(name))
+        del zf
+        return True
+
+
+    def downloadFile(self, job, target):
         locationSplit = target['location'].split('/')
         bucketName = locationSplit[0]
         key = locationSplit[1] + '/' + locationSplit[2]
@@ -275,14 +338,7 @@ class TSK:
         if not fileData:
             return self.cancellation(job, 'Problem downloading object from S3.')
         fileData.seek(0)
-        Path('tmp/' + job.model['id']).mkdir(parents=True, exist_ok=True)
-        zf = zipfile.ZipFile(fileData, 'r')
-        for name in zf.namelist():
-            with open('tmp/' + job.model['id'] + '/' + name, 'wb') as f:
-                f.write(zf.read(name))
-        del fileData
-        del zf
-        return True
+        return fileData
 
 
     def updateJobStatus(self, job, status):
@@ -323,7 +379,7 @@ class TSK:
         del vectorsBin
 
 
-    def persistQNAModel(self, newModelId, job):
+    def persistZIPModel(self, newModelId, job):
         path = 'tmp/' + newModelId
         inMemoryFile = io.BytesIO()
         zf = zipfile.ZipFile(inMemoryFile, 'w', zipfile.ZIP_DEFLATED)
@@ -344,7 +400,7 @@ class TSK:
             dataset.location = bucketName + '/' + user + '/' + s3FileName
             dataset.kind = 'model'
             dataset.format = 'application/zip'
-            dataset.label = 'Model created for user ' + user + ' as a result of a QNA Training job.'  
+            dataset.label = 'Model created for user ' + user + ' as a result of a ' + self._taskKind + ' Training job.'  
             # store persistent data
             add_dataset = ("INSERT INTO Data "
                     "(id, fileName, format, kind, label, location) "

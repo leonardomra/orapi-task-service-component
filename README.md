@@ -47,3 +47,12 @@ docker build -t task_module .
 # starting up a container
 docker run -p 8080:8080 task_module
 ```
+
+## Virtual Environment
+
+python3 -m venv my-env
+source my-env/bin/activate
+
+## Build and Run in Docker
+
+docker build --tag task_service_component:1.0 . && docker run --publish 8040:80 --detach --name task task_service_component:1.0

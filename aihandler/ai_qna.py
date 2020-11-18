@@ -94,23 +94,17 @@ class QNA(TSK):
             #tr.print_diff()
         elif job.task == 'train':
             start_time = time.time()
-
-            #'''
-            print('INFO:', 'will donwload and store model...', flush=True)
+            self.updateJobStatus(job, 'training')
+            print('INFO:', 'will donwload and store dataset...', flush=True)
             self.downloadAndStoreDataset(job, job.data_source)
             print('INFO:', 'will donwload and store model...', flush=True)
             self.downloadAndStoreZIPModel(job, job.model)
             print('INFO:', 'will set the reader...', flush=True)
             reader = self.setReader(job)
-
             newModelId = str(uuid.uuid4())
             reader.train(data_dir='tmp/' + job.data_source['id'], train_filename=job.data_source['fileName'], use_gpu=False, n_epochs=1, save_dir='tmp/' + newModelId)
-            #'''
-            
-            self.persistQNAModel(newModelId, job)
+            self.persistZIPModel(newModelId, job)
             self.updateJobStatus(job, 'completed')
-
-
             elapsed_time = time.time() - start_time
             print('Execution time max: ', elapsed_time, 'for job.id:', job.id,  flush=True) 
         #return True
