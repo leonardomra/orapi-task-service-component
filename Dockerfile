@@ -18,31 +18,15 @@ RUN update-alternatives --set python /usr/bin/python3.6
 RUN curl -s https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
     python get-pip.py --force-reinstall && \
     rm get-pip.py
-
-
-
-
 RUN mkdir -p /usr/src/app
-
 WORKDIR /usr/src/app
-
 COPY requirements.txt /usr/src/app/
-
 RUN pip install --upgrade pip && pip install wheel
-
 RUN pip install https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.2.5/en_core_sci_md-0.2.5.tar.gz
-
 RUN pip install --no-cache-dir -r requirements.txt
-
-
 COPY . /usr/src/app
-
 ENV PYTHONUNBUFFERED=1
-
 EXPOSE 80
-
-#CMD tail -f /dev/null
-
+#CMD tail -f /dev/null # for keeping container alive
 ENTRYPOINT ["python3"]
-
 CMD ["-u", "-m", "task_module"]

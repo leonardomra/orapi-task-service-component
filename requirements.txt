@@ -38,3 +38,6 @@ farm-haystack==0.3.0
 py7zr==0.9.7
 fs==2.4.11
 pympler==0.8
+ors3handler>=0.0.3
+orcommunicator>=0.0.1
+ordbhandler>=0.0.1

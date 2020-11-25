@@ -14,7 +14,7 @@ from aihandler.tml.topicmodeller import TopicModeller
 from threading import Timer
 from task_module.models.job import Job
 from task_module.models.datacomplex import DataComplex
-from orcomm_module.orevent import OREvent
+from orcommunicator.orevent import OREvent
 
 
 class TSK:

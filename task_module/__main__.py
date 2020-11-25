@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
+
 import sys
 import os
 import connexion
 from task_module import encoder
-#from aihandler.ai_tml import TML
-#from aihandler.ai_qna import QNA
-from aihandler.ai_ner import NER
-from dbhandler.mysql_handler import MySQLHandler
-from s3handler.s3_handler import S3Handler
-from orcomm_module.orcommunicator import ORCommunicator
+from ordbhandler import MySQLHandler
+from ors3handler import S3Handler
+from orcommunicator import ORCommunicator
 from dotenv import load_dotenv
 
 
@@ -29,20 +27,17 @@ def main():
         orcomm.addQueue(os.environ['TRAIN_SQS_QUEUE_NAME_NER'], os.environ['TRAIN_SQS_QUEUE_ARN_NER'])
         orcomm.addQueue(os.environ['PREDICT_SQS_QUEUE_NAME_NER'], os.environ['PREDICT_SQS_QUEUE_ARN_NER'])
         orcomm.addTopic(os.environ['JOBS_NAME_TOPIC'], os.environ['JOBS_ARN_TOPIC'])
-        
         if os.environ['TASK'] == 'train-tml' or os.environ['TASK'] == 'analyse-tml':
-            #from aihandler.ai_tml import TML
-            #TML(db, s3, orcomm)
+            from aihandler.ai_tml import TML
+            TML(db, s3, orcomm)
             pass
         elif os.environ['TASK'] == 'train-qna' or os.environ['TASK'] == 'analyse-qna':
-            #from aihandler.ai_qna import QNA
-            #QNA(db, s3, orcomm)
+            from aihandler.ai_qna import QNA
+            QNA(db, s3, orcomm)
             pass
         elif os.environ['TASK'] == 'train-ner' or os.environ['TASK'] == 'analyse-ner':
             from aihandler.ai_ner import NER
             NER(db, s3, orcomm)
-        
-
     app.run(port=80)
 
 
