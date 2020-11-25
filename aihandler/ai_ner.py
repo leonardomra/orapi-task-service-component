@@ -19,8 +19,6 @@ from aihandler.ai_tsk import TSK
 class NER(TSK):
 
     def __init__(self, db, s3, orcomm):
-        print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
-        print(Path(__file__).parent.absolute())
         TSK.__init__(self, db, s3, orcomm)
         self._taskKind = 'ner'
         self.useRemote = True

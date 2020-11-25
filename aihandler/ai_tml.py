@@ -63,7 +63,6 @@ class TML(TSK):
             self.updateJobStatus(job, 'analysing')
             vectorsBin = tm.CSV2Topics(sampleCSV, job.task_params)
             if not vectorsBin:
-                #return self.cancellation(job, 'Wrong key.')
                 return {'status': self.cancellation(job, 'Wrong key.'), 'code': 'error', 'msg': 'ERROR: Wrong key.' }
             result = td.discover(vectorsBin)
             self.persistResult(job, result)
@@ -75,5 +74,4 @@ class TML(TSK):
             del result
         del tm
         del td
-        #return True
         return {'status': True, 'code': 'ok', 'msg': 'success' }
